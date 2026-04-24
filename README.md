@@ -1,2 +1,1 @@
-# About-bda
-lweugfs
+Big Data Analysis Group Repository
