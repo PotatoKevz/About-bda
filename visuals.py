@@ -70,14 +70,25 @@ WEATHER_SCHEMA = StructType([
 ])
 
 
-
+# ──────────────────────────────────────────────
+# 3.  DATA LOADING
+# ──────────────────────────────────────────────
 def extract_location(filepath: str) -> str:
+    """
+    Derive a human-readable location label from the filename.
+    'path/to/DecodedCamNorte.csv'  →  'CamNorte'
+    Falls back to the bare stem if the pattern doesn't match.
+    """
     stem = os.path.splitext(os.path.basename(filepath))[0]
     match = re.search(r"Decoded(.+)", stem, re.IGNORECASE)
     return match.group(1) if match else stem
 
 
 def load_all_csvs(spark: SparkSession, data_dir: str):
+    """
+    Load every CSV in *data_dir*, add a `location` column derived from
+    the filename, and union all DataFrames into one.
+    """
     csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
     if not csv_files:
         raise FileNotFoundError(f"No CSV files found in '{data_dir}'")
@@ -104,7 +115,9 @@ def load_all_csvs(spark: SparkSession, data_dir: str):
     return combined
 
 
-
+# ──────────────────────────────────────────────
+# 4.  CLEANING & PREPARATION
+# ──────────────────────────────────────────────
 NUMERIC_COLS = [
     "temp", "pressure", "humidity",
     "wind_speed", "wind_dir",
@@ -112,6 +125,12 @@ NUMERIC_COLS = [
 ]
 
 def clean(df):
+    """
+    • Parse datetime string → TimestampType
+    • Cast numeric columns (already typed in schema; re-cast for safety)
+    • Drop rows where all key measurements are null
+    • Fill remaining nulls with 0 for rain_3h (missing = no rain)
+    """
     df = df.withColumn(
         "ts",
         F.coalesce(
@@ -136,7 +155,9 @@ def clean(df):
     return df.cache()  
 
 
-
+# ──────────────────────────────────────────────
+# 5.  AGGREGATIONS
+# ──────────────────────────────────────────────
 def agg_monthly_temp(df):
     """Monthly average temperature per location – outliers removed first."""
     filtered = df.filter((F.col("temp") >= 10) & (F.col("temp") <= 45))
